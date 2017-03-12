@@ -104,7 +104,7 @@ public:
     virtual bool	start(IOService *provider) override;
     virtual void	stop(IOService *provider) override;
     
-    virtual bool    passiveMatch (OSDictionary *matching, bool changesOK);
+    virtual bool    passiveMatch (OSDictionary *matching, bool changesOK) override;
     
     virtual void    copyEntryProperties(const char* prefix, IORegistryEntry* entry);
     virtual void    copyUnserialzedData(const char* prefix, OSDictionary* dict);
@@ -157,7 +157,7 @@ public:
     
     
 private:
-    static void timeoutOccurred(OSObject *target, IOTimerEventSource* timer);
+    static bool DiskFound_callback(void *target, void *refCon, IOService *newService, IONotifier *notifier);
     
     virtual void registerNVRAM();
     
@@ -180,7 +180,7 @@ private:
     OSDictionary * mNvramMissDict;
     IOCommandGate* mCommandGate;
     OSString*      mFilePath;
-    IOTimerEventSource* mTimer;
+    IONotifier* disk_notifier_start_;
 };
 
 #if __cplusplus < 201103L

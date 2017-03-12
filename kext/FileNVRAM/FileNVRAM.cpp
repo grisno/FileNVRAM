@@ -12,6 +12,7 @@
 
 
 #include "FileNVRAM.h"
+#include <libkern/version.h>
 #include "Support.h"
 #include "Version.h"
 #include <IOKit/IOUserClient.h>
@@ -51,7 +52,6 @@ bool FileNVRAM::start(IOService *provider)
 {
     char peBuf[256];
     mReadOnly      = false;
-    bool earlyInit = false;
     bool debug     = false;
     
     if(PE_parse_boot_argn(BOOT_KEY_NVRAM_DISABLED, peBuf, sizeof peBuf))
@@ -103,6 +103,9 @@ bool FileNVRAM::start(IOService *provider)
     // set a default file path
     setPath(OSString::withCString(FILE_NVRAM_PATH));
     
+    // register immediately, save a lot of startup time
+    registerNVRAM();
+    
     IORegistryEntry* bootnvram = IORegistryEntry::fromPath(NVRAM_FILE_DT_LOCATION, gIODTPlane);
     IORegistryEntry* root = IORegistryEntry::fromPath("/", gIODTPlane);
     
@@ -115,49 +118,97 @@ bool FileNVRAM::start(IOService *provider)
     if(!dict) return false;
     setPropertyTable(dict);
     
-    
     if(bootnvram)
     {
         copyEntryProperties(NULL, bootnvram);
         bootnvram->detachFromParent(root, gIODTPlane);
+        mInitComplete = true;
     }
     
     if(mReadOnly)
     {
         // we assume that the bootloader has done its job
         // i.e. populate /chosen/nvram
-        mInitComplete = true;
-        mSafeToSync = true;
-        registerNVRAM();
+        mInitComplete = true;        mSafeToSync = true;
         return true;
     }
     else
     {
-        IOTimerEventSource* mTimer = IOTimerEventSource::timerEventSource(this, timeoutOccurred);
-        
-        if(mTimer)
+        if(VERSION_MAJOR >10)
         {
-            getWorkLoop()->addEventSource( mTimer);
-            mTimer->setTimeoutMS(50); // callback isn't being setup right, causes a panic
-            mSafeToSync = false;
+            // added in 10.6
+            disk_notifier_start_ = addMatchingNotification(gIOMatchedNotification,
+                                                           serviceMatching("IOMediaBSDClient"),
+                                                           FileNVRAM::DiskFound_callback,
+                                                           this, nullptr, 0);
         }
         else
         {
-            earlyInit = true;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            // deprecated in 10.6
+            disk_notifier_start_ = addNotification(gIOMatchedNotification,
+                                                   serviceMatching("IOMediaBSDClient"),
+                                                   ((IOServiceNotificationHandler)&(FileNVRAM::DiskFound_callback)),
+                                                   this, nullptr, 0);
+#pragma clang diagnostic pop
+        }
+        
+        
+        if(disk_notifier_start_ == nullptr)
+        {
+            IOLog("FileNVRAM: disk_notifier_start_ == nullptr\n");
+            return false;
         }
     }
     
-    // We don't have initial nvram data from the bootloader, or we couldn't schedule a
-    // timer to read in the nvram file, so start up immediately.
-    if(earlyInit == true)
-    {
-        mSafeToSync = true;
-        registerNVRAM();
-    }
-    
-    mInitComplete = true;
-    
     return true;
+}
+
+bool FileNVRAM::DiskFound_callback(void *target, void *ref, IOService *service, IONotifier *notifier)
+{
+    FileNVRAM *self = (FileNVRAM *)target;
+    
+    notifier->remove();
+    notifier = NULL;
+    
+    if(OSDictionary *matching = nameMatching("Apple_HFS"))
+    {
+        char* buffer;
+        uint64_t len;
+        self->mSafeToSync = true;
+        if(!self->mInitComplete) {
+            if(!self->read_buffer(&buffer, &len))
+            {
+                if(len > strlen(NVRAM_FILE_HEADER) + strlen(NVRAM_FILE_FOOTER) + 1)
+                {
+                    char* xml = buffer + strlen(NVRAM_FILE_HEADER);
+                    size_t xmllen = (size_t)len - strlen(NVRAM_FILE_HEADER) - strlen(NVRAM_FILE_FOOTER);
+                    xml[xmllen -1] = 0;
+                    OSString *errmsg = 0;
+                    OSObject* nvram = OSUnserializeXML(xml, &errmsg);
+                    
+                    if(nvram)
+                    {
+                        OSDictionary* data = OSDynamicCast(OSDictionary, nvram);
+                        //if(data) self->setPropertyTable(data);
+                        
+                        if(data)
+                        {
+                            self->copyUnserialzedData(NULL, data);
+                        }
+                        OSSafeReleaseNULL(nvram);
+                    }
+                }
+                IOFree(buffer, (size_t)len);
+            }
+            
+            OSSafeReleaseNULL(matching);
+            self->mInitComplete = true;
+            return true;
+        }
+    }
+    return false;
 }
 
 void FileNVRAM::registerNVRAM()
@@ -182,13 +233,6 @@ void FileNVRAM::registerNVRAM()
 void FileNVRAM::stop(IOService *provider)
 {
     OSSafeReleaseNULL(mFilePath);
-    
-    if(mTimer)
-    {
-        mTimer->cancelTimeout();
-        getWorkLoop()->removeEventSource(mTimer);
-        OSSafeReleaseNULL(mTimer);
-    }
     
     if(mCommandGate)
     {
@@ -747,105 +791,6 @@ IOReturn FileNVRAM::dispatchCommand( OSObject* owner,
     }
     
     return kIOReturnSuccess;
-}
-
-void FileNVRAM::timeoutOccurred(OSObject *target, IOTimerEventSource* timer)
-{
-    static int retryCount;
-    if(target)
-    {
-        FileNVRAM* self = OSDynamicCast(FileNVRAM, target);
-        if(self)
-        {
-            uint64_t timeout = 20000; // 20ms
-            // Check to see if BSD has been published, if so sync();
-            
-            OSDictionary *  dict = 0;
-            IOService *     match = 0;
-            boolean_t		found = false;
-            
-            do
-            {
-                dict = IOService::resourceMatching( "IOBSD" );
-                if(dict)
-                {
-                    if(IOService::waitForMatchingService( dict, timeout ))
-                    {
-                        found = true;
-                    }
-                }
-            } while( false );
-            
-            OSSafeReleaseNULL(dict);
-            OSSafeReleaseNULL(match);
-            
-            if(found)
-            {
-                UInt8 mLoggingLevel = self->mLoggingLevel;
-                LOG(NOTICE, "BSD found, syncing\n");
-                
-                // TODO: Read out nvram plist and populate device tree
-                char* buffer;
-                uint64_t len;
-                if(self->read_buffer(&buffer, &len))
-                {
-                    retryCount++;
-                    LOG(ERROR, "Unable to read in nvram data at %s\n", self->mFilePath->getCStringNoCopy());
-                    // TODO: Check if / is mounted, and if not, try again untill it is.
-                    if(retryCount < 100)
-                    {
-                        timer->setTimeoutMS(100);
-                    }
-                    else
-                    {
-                        self->mSafeToSync = true;
-                        self->registerNVRAM();
-                    }
-                }
-                else
-                {
-                    self->mSafeToSync = false;
-                    
-                    timer->cancelTimeout();
-                    self->getWorkLoop()->removeEventSource(timer);
-                    timer->release();
-                    self->mTimer = NULL;
-                    
-                    if(len > strlen(NVRAM_FILE_HEADER) + strlen(NVRAM_FILE_FOOTER) + 1)
-                    {
-                        char* xml = buffer + strlen(NVRAM_FILE_HEADER);
-                        size_t xmllen = (size_t)len - strlen(NVRAM_FILE_HEADER) - strlen(NVRAM_FILE_FOOTER);
-                        xml[xmllen-1] = 0;
-			OSString *errmsg = 0;
-                        OSObject* nvram = OSUnserializeXML(xml, &errmsg);
-                        
-                        if(nvram)
-                        {
-                            OSDictionary* data = OSDynamicCast(OSDictionary, nvram);
-                            //if(data) self->setPropertyTable(data);
-                            if(data) self->copyUnserialzedData(NULL, data);
-                            nvram->release();
-                        }
-                    }
-                    IOFree(buffer, (size_t)len);
-                    
-                    
-                    self->mSafeToSync = true;
-                    self->registerNVRAM();
-                    //self->sync();
-                }
-            }
-            else
-            {
-                timer->setTimeoutMS(50);
-            }
-        }
-        else
-        {
-            //printf("Self is not of type FileNVRAM.\n");
-        }
-        
-    }
 }
 
 IOReturn FileNVRAM::setPowerState ( unsigned long whichState, IOService * whatDevice )
