@@ -366,6 +366,18 @@ static void readplist()
 
 #if HAS_MKEXT
     /* We need to patch the kernel to load up an mkext in the event that the kernel is prelinked. */
+    
+    /* TODO ensure that there are no conflicts with the chameleon's internal patcher.
+       if KernelBooter_kexts is true probably we are attemting to do the same thing,
+       only actually I dont't know if KernelBooter_kexts allow to load an mkext among the prelinked kernel.
+       let see...
+     
+     if(!is_module_loaded("KernelPatcher.dylib", 0) && !KernelBooter_kexts){
+        register_hook_callback("DecodeKernel", &patch_kernel);
+     }
+     
+     */
+    
     if(!is_module_loaded("KernelPatcher.dylib", 0)) register_hook_callback("DecodeKernel", &patch_kernel);
 #endif
     
