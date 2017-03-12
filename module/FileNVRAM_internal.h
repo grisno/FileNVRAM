@@ -15,10 +15,10 @@
 #ifndef FILENVRAM_INTERNAL_H
 #define FILENVRAM_INTERNAL_H
 
-#define BOOT_KEY_NVRAM_DISABLED		"NoFileNVRAM"
+#define BOOT_KEY_NVRAM_DISABLED		"-NoFileNVRAM"
 
 #define FILE_NVRAM_GULD         "D8F0CCF5-580E-4334-87B6-9FBBB831271D"
-#define NVRAM_ENABLE_LOG        "EnableLogging"
+#define NVRAM_ENABLE_LOG        "-EnableLogging"
 #define NVRAM_SET_FILE_PATH     "NVRAMFile"
 
 #define GetPackageElement(e)     OSSwapBigToHostInt32(package->e)

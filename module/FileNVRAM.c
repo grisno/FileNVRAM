@@ -175,7 +175,7 @@ static BVRef scanforNVRAM(BVRef chain)
 {
     // Locate the nvram.plist file that was modified last.
     
-    const char* uuid = getStringFromUUID((const uint8_t *)getSmbiosUUID());
+    //const char* uuid = getStringFromUUID((const uint8_t *)getSmbiosUUID());
 
     // Locate file w/ newest tiemstamp
     BVRef bvr;
@@ -189,9 +189,14 @@ static BVRef scanforNVRAM(BVRef chain)
     result = NULL;
     for (bvr = chain; bvr; bvr = bvr->next)
     {
+        /*
         sprintf(dirSpec, "hd(%d,%d)/Extra/", BIOS_DEV_UNIT(bvr), bvr->part_no);
         if(!uuid) strcpy(fileSpec, "nvram.plist");
         else sprintf(fileSpec, "nvram.%s.plist", uuid);
+        */
+        sprintf(dirSpec, "hd(%d,%d)/", BIOS_DEV_UNIT(bvr), bvr->part_no);
+        sprintf(fileSpec, ".nvram.plist", uuid);
+        
         ret = GetFileInfo(dirSpec, fileSpec, &flags, &time);
         if (!ret)
         {
@@ -366,8 +371,8 @@ static void readplist()
     
     
     // We need the platform UUID *early*
-    InternalreadSMBIOSInfo(getSmbios(SMBIOS_ORIGINAL));
-    const char* uuid = getStringFromUUID((const uint8_t *)getSmbiosUUID());
+    //InternalreadSMBIOSInfo(getSmbios(SMBIOS_ORIGINAL));
+    //const char* uuid = getStringFromUUID((const uint8_t *)getSmbiosUUID());
     
     // By the time we are here, the file system has already been probed, lets fine the nvram plist.
     BVRef bvr = scanforNVRAM(bvChain);
@@ -375,9 +380,16 @@ static void readplist()
     /** Load Dictionary if possible **/
     if(bvr)
     {
+        /*
         char* nvramPath = malloc(sizeof("hd(%d,%d)/Extra/nvram.plist") + (uuid ? strlen(uuid)  + 2 : 0));
         if(!uuid) sprintf(nvramPath, "hd(%d,%d)/Extra/nvram.plist", BIOS_DEV_UNIT(bvr), bvr->part_no);
         else sprintf(nvramPath, "hd(%d,%d)/Extra/nvram.%s.plist", BIOS_DEV_UNIT(bvr), bvr->part_no, uuid);
+         */
+        
+        // bvr and bvr->part_no can be > 10 (1 additional char each). Chameleon support max 34 drives
+        char* nvramPath = malloc(strlen("hd(,)/.nvram.plist") + 4 + 1);
+        sprintf(nvramPath, "hd(%d,%d)/.nvram.plist", BIOS_DEV_UNIT(bvr), bvr->part_no);
+        
         int fh = open(nvramPath, 0);
         if(fh >= 0)
         {
@@ -449,6 +461,7 @@ void FileNVRAM_hook()
     char* path = NULL;
     
     BVRef bvr = getBootVolumeRef(NULL, (const char**)&path);
+    /*
     if(bvr->OSisInstaller)
     {
         // Todo: VERIFY this path
@@ -471,6 +484,19 @@ void FileNVRAM_hook()
             sprintf(path, "/Extra/nvram.%s.plist", uuid);
         }
         DT__AddProperty(settingsNode, NVRAM_SET_FILE_PATH, strlen(path)+1, path);
+    }*/
+    
+    char label[128];
+    if(bvr->description)
+    {
+        bvr->description(bvr, label, sizeof(label)-1);
+        path = malloc(strlen("/Volumes//.nvram.plist") + strlen(label) +1);
+        sprintf(path, "/Volumes/%s/.nvram.plist", label);
+        DT__AddProperty(settingsNode, NVRAM_SET_FILE_PATH, strlen(path)+1, path);
+    }
+    else
+    {
+        DT__AddProperty(settingsNode, NVRAM_SET_FILE_PATH, strlen("/.nvram.plist"), "/.nvram.plist");
     }
     
 #if HAS_MKEXT
