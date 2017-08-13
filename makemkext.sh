@@ -18,3 +18,6 @@ chmod -R 777 "${EXT_PATH}"
 cd "${EXT_PATH}"
 xxd -i FileNVRAM.mkext > FileNVRAM.mkext.h
 
+if [ -f FileNVRAM.mkext.h ]; then
+    cp FileNVRAM.mkext.h "${mydir}"
+fi
