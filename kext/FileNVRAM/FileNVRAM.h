@@ -67,9 +67,12 @@ do {                        \
 
 #define FILE_NVRAM_GUID         "D8F0CCF5-580E-4334-87B6-9FBBB831271D"
 
+#define NVRAM_GEN_MLB           "GenerateMLB"
+#define NVRAM_GEN_ROM           "GenerateROM"
 #define NVRAM_ENABLE_LOG        "-EnableLogging"
 #define BOOT_KEY_NVRAM_DISABLED "-NoFileNVRAM"
 #define BOOT_KEY_NVRAM_RDONLY   "-FileNVRAMro"
+#define BOOT_KEY_NVRAM_NOGEN    "-FileNVRAMng"
 #define NVRAM_SET_FILE_PATH     "NVRAMFile"
 
 #ifdef USE_ROOT_DIR
@@ -178,6 +181,7 @@ private:
     virtual IOReturn read_buffer(char** buffer, uint64_t* length);
     
     bool mReadOnly;
+    bool mNoGen;
     bool mInitComplete;
     bool mSafeToSync;
     UInt8 mLoggingLevel;

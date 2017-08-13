@@ -51,7 +51,8 @@ void FileNVRAM::setPath(OSString* path)
 bool FileNVRAM::start(IOService *provider)
 {
     char peBuf[256];
-    mReadOnly      = false;
+    bool mReadOnly = false;
+    bool mNoGen    = false;
     bool earlyInit = false;
     bool debug     = false;
     
@@ -64,6 +65,12 @@ bool FileNVRAM::start(IOService *provider)
     {
         /* read only */
         mReadOnly = true;
+    }
+    
+    if(PE_parse_boot_argn(BOOT_KEY_NVRAM_NOGEN, peBuf, sizeof peBuf))
+    {
+        /* read only */
+        mNoGen = true;
     }
     
     if(PE_parse_boot_argn(NVRAM_ENABLE_LOG, peBuf, sizeof peBuf))
@@ -161,6 +168,30 @@ bool FileNVRAM::start(IOService *provider)
 
 void FileNVRAM::registerNVRAM()
 {
+    
+    if(mNoGen == true)
+    {
+
+    // Before we register ourselfs with IOKit, generate any required NVRAM variables.
+    
+    /* Do we need to generate MLB? */
+    if(!getProperty(APPLE_MLB_KEY))
+    {
+        OSString* str = OSString::withCString(NVRAM_GEN_MLB);
+        handleSetting(str, kOSBooleanTrue, this);
+        str->release();
+    }
+    
+    /* Do we need to generate ROM? */
+    if(!getProperty(APPLE_ROM_KEY))
+    {
+        OSString* str = OSString::withCString(NVRAM_GEN_ROM);
+        handleSetting(str, kOSBooleanTrue, this);
+        str->release();
+    }
+    
+    }
+
     if(mInitComplete)
     {
         return;

@@ -29,7 +29,7 @@
 
 #if HAS_MKEXT
 // File to be embedded
-#include <FileNVRAM.mkext.h>
+#include "FileNVRAM.mkext.h"
 #endif /* HAS_MKEXT */
 
 #if HAS_EMBEDDED_KEXT

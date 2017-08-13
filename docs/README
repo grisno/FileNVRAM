@@ -6,13 +6,11 @@ FileNVRAM copyright © 2013-2017 xZenue LLC.
 FileNVRAM is licensed under the Attribution-NonCommercial 3.0 Unported license.
 	Please see the license file for details
 
-
 ===================
 =      Bugs       =
 ===================
 
 Please report any bugs at https://public.xzenue.com/bugzilla/
-
 
 ===================
 =   Requirements  =
@@ -31,10 +29,11 @@ Use the nvram command to manipulate variables
 
 - bootArgs:
 
+“-FileNVRAMng” disable random-gen the ROM/MLB values.
+
 “-FileNVRAMro” makes FileNVRAM.kext to be read only. This allow external scripts/Applications to dump the nvram to a custom place (e.g. in the ESP).
 
 “-EnableLogging” enable the debug log of FileNVRAM.kext, disabled by default.
 
 “-NoFileNVRAM” cause the FileNVRAM to do nothing by returning false inside its start() method.
-
 
