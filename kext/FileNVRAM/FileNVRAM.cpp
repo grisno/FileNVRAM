@@ -78,7 +78,27 @@ bool FileNVRAM::start(IOService *provider)
         debug = true;
     }
     
-    //start is called upon wake for some reason.
+    // Disable if not detect chameleon enoch bootloader
+    if(IORegistryEntry *efi = IORegistryEntry::fromPath("/efi", gIODTPlane))
+    {
+        if(OSData *vendor = OSDynamicCast(OSData, efi->getProperty("firmware-vendor")))
+        {
+            OSData *buffer = OSData::withCapacity(128);
+            const unsigned char* data = static_cast<const unsigned char*>(vendor->getBytesNoCopy());
+            for(unsigned int index = 0; index < vendor->getLength(); index += 2)
+            {
+                buffer->appendByte(data[index], 1);
+            }
+            OSString *name = OSString::withCString(static_cast<const char *>(buffer->getBytesNoCopy()));
+            if(!name->isEqualTo("Enoch"))
+            {
+                return false;
+            }
+        }
+        OSSafeReleaseNULL(efi);
+    }
+    
+    // Start is called upon wake for some reason.
     if(mInitComplete)
     {
         IOLog(FileNVRAM_COPYRIGHT,
@@ -108,7 +128,7 @@ bool FileNVRAM::start(IOService *provider)
     registerPowerDriver(this, sPowerStates, sizeof(sPowerStates)/sizeof(IOPMPowerState));
     provider->joinPMtree(this);
     
-    // set a default file path
+    // Set a default file path
     setPath(OSString::withCString(FILE_NVRAM_PATH));
     
     IORegistryEntry* bootnvram = IORegistryEntry::fromPath(NVRAM_FILE_DT_LOCATION, gIODTPlane);
